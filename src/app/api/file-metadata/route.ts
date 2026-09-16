@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, supabaseAdmin } from '@/lib/supabaseClient';
+import { isServerlessEnvironment } from '@/lib/utils/fileHandler';
 import fs from 'fs';
 import path from 'path';
 
 function getLocalMetadata() {
+    if (isServerlessEnvironment()) {
+        return [];
+    }
     try {
         const metaPath = path.join(process.cwd(), 'public', 'uploads', 'metadata.json');
         if (fs.existsSync(metaPath)) {
@@ -117,14 +121,16 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Local metadata update fallback
-        const localRecords = getLocalMetadata();
-        const index = localRecords.findIndex((r: any) => r.id === fileId);
-        if (index !== -1) {
-            localRecords[index] = { ...localRecords[index], ...updates };
-            const metaPath = path.join(process.cwd(), 'public', 'uploads', 'metadata.json');
-            fs.writeFileSync(metaPath, JSON.stringify(localRecords, null, 2));
-            return NextResponse.json({ success: true, metadata: localRecords[index] });
+        // Local metadata update fallback (Local development ONLY)
+        if (!isServerlessEnvironment()) {
+            const localRecords = getLocalMetadata();
+            const index = localRecords.findIndex((r: any) => r.id === fileId);
+            if (index !== -1) {
+                localRecords[index] = { ...localRecords[index], ...updates };
+                const metaPath = path.join(process.cwd(), 'public', 'uploads', 'metadata.json');
+                fs.writeFileSync(metaPath, JSON.stringify(localRecords, null, 2));
+                return NextResponse.json({ success: true, metadata: localRecords[index] });
+            }
         }
 
         return NextResponse.json({ success: true, metadata: updates });
@@ -176,25 +182,27 @@ export async function DELETE(request: NextRequest) {
             }
         }
 
-        // Local deletion fallback
-        try {
-            const metaPath = path.join(process.cwd(), 'public', 'uploads', 'metadata.json');
-            if (fs.existsSync(metaPath)) {
-                let localRecords = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-                const fileToDelete = localRecords.find((r: any) => r.id === fileId);
+        // Local deletion fallback (Local development ONLY)
+        if (!isServerlessEnvironment()) {
+            try {
+                const metaPath = path.join(process.cwd(), 'public', 'uploads', 'metadata.json');
+                if (fs.existsSync(metaPath)) {
+                    let localRecords = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                    const fileToDelete = localRecords.find((r: any) => r.id === fileId);
 
-                if (fileToDelete?.public_url?.startsWith('/uploads/')) {
-                    const localFilePath = path.join(process.cwd(), 'public', fileToDelete.public_url);
-                    if (fs.existsSync(localFilePath)) {
-                        fs.unlinkSync(localFilePath);
+                    if (fileToDelete?.public_url?.startsWith('/uploads/')) {
+                        const localFilePath = path.join(process.cwd(), 'public', fileToDelete.public_url);
+                        if (fs.existsSync(localFilePath)) {
+                            fs.unlinkSync(localFilePath);
+                        }
                     }
-                }
 
-                localRecords = localRecords.filter((r: any) => r.id !== fileId);
-                fs.writeFileSync(metaPath, JSON.stringify(localRecords, null, 2));
+                    localRecords = localRecords.filter((r: any) => r.id !== fileId);
+                    fs.writeFileSync(metaPath, JSON.stringify(localRecords, null, 2));
+                }
+            } catch (localErr) {
+                console.error('Local file deletion failed:', localErr);
             }
-        } catch (localErr) {
-            console.error('Local file deletion failed:', localErr);
         }
 
         return NextResponse.json({ success: true, message: 'File deleted successfully' });

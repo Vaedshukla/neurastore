@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
             .single();
 
         let schemaId = existingSchema?.id;
-        let schemaExists = !schemaCheckError && existingSchema;
+        const schemaExists = !schemaCheckError && existingSchema;
 
         if (schemaExists) {
             // Schema exists - update metadata to ensure it's marked as SQL storage

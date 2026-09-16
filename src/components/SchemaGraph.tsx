@@ -50,7 +50,7 @@ const getNodeColor = (type: string): string => {
 const createNodesAndEdges = (data: any, parentId: string = 'root', x: number = 0, y: number = 0): { nodes: GraphNode[], edges: Edge[] } => {
     const nodes: GraphNode[] = [];
     const edges: Edge[] = [];
-    let currentY = y;
+    const currentY = y;
 
     if (typeof data === 'object' && data !== null) {
         if (Array.isArray(data)) {

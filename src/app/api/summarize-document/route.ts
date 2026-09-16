@@ -397,6 +397,7 @@ async function extractTextFromBuffer(buffer: Buffer, fileName: string, mimeType:
 
     if (lowerName.endsWith(".pdf") || mimeType === "application/pdf") {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             const pdfParse = require("pdf-parse");
             const pdfData = await pdfParse(buffer);
             return { text: pdfData.text || "", pageCount: pdfData.numpages };
@@ -411,6 +412,7 @@ async function extractTextFromBuffer(buffer: Buffer, fileName: string, mimeType:
 
     if (lowerName.endsWith(".docx") || mimeType?.includes("wordprocessingml")) {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
             const mammoth = require("mammoth");
             const result = await mammoth.extractRawText({ buffer });
             return { text: result.value || "" };

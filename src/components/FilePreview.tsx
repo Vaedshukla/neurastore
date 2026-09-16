@@ -55,11 +55,10 @@ export default function FilePreview({
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const FileIcon = getFileIcon(mimeType);
-
     // Load text content for text files
     useEffect(() => {
         if (mimeType.startsWith('text/') && previewMode === 'preview') {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsLoading(true);
             fetch(fileUrl)
                 .then(response => response.text())
@@ -84,7 +83,7 @@ export default function FilePreview({
             return (
                 <div className="flex items-center justify-center h-64 bg-muted rounded-lg">
                     <div className="text-center">
-                        <FileIcon className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+                        {getFileIcon(mimeType)({ className: "mx-auto h-12 w-12 text-muted-foreground mb-2" })}
                         <p className="text-sm text-muted-foreground">{error}</p>
                     </div>
                 </div>
@@ -199,7 +198,7 @@ export default function FilePreview({
         return (
             <div className="flex items-center justify-center h-64 bg-muted rounded-lg">
                 <div className="text-center">
-                    <FileIcon className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+                    {getFileIcon(mimeType)({ className: "mx-auto h-12 w-12 text-muted-foreground mb-2" })}
                     <p className="text-sm text-muted-foreground">Preview not available</p>
                     <p className="text-xs text-muted-foreground mt-1">{mimeType}</p>
                 </div>
@@ -247,7 +246,7 @@ export default function FilePreview({
             <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
-                        <FileIcon className="h-5 w-5 text-muted-foreground" />
+                        {getFileIcon(mimeType)({ className: "h-5 w-5 text-muted-foreground" })}
                         <h3 className="font-medium truncate max-w-xs" title={fileName}>
                             {fileName}
                         </h3>

@@ -29,7 +29,7 @@ export default function JSONVisualizer({ data, onClose, fileName, fileId, allFil
     const buildGraph = useCallback((json: any, parentId: string | null = null, depth = 0) => {
         if (!json || typeof json !== "object") return { nodes: [], edges: [] };
         const result: Node[] = [];
-        let edgeList: Edge[] = [];
+        const edgeList: Edge[] = [];
         let index = 0;
 
         Object.entries(json).forEach(([key, value]) => {

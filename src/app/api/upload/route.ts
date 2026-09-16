@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { detectMimeType, generateFilePath, uploadToSupabase, saveFileMetadata } from "@/lib/utils/fileHandler";
+import { detectMimeType, generateFilePath, uploadToSupabase, saveFileMetadata, isServerlessEnvironment } from "@/lib/utils/fileHandler";
 import { supabase } from "@/lib/supabaseClient";
 import crypto from "crypto";
 import fs from "fs";
@@ -99,22 +99,32 @@ export async function POST(req: Request) {
 
         const filePath = generateFilePath(file.name, folderPath);
 
-        // Storage Upload with robust local fallback
+        // Storage Upload with serverless-safe local fallback
         let publicUrl = "";
         const uploadResult = await uploadToSupabase(buffer, filePath, mimeType);
 
         if (uploadResult && uploadResult.publicUrl) {
             publicUrl = uploadResult.publicUrl;
-        } else {
-            // Local fallback upload write
+        } else if (!isServerlessEnvironment()) {
+            // Local fallback upload write (Local development ONLY)
             const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
             if (!fs.existsSync(uploadsDir)) {
                 fs.mkdirSync(uploadsDir, { recursive: true });
             }
-            const safeFileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+            const basename = path.basename(file.name).replace(/[\r\n\0]/g, '');
+            const safeFileName = `${Date.now()}_${basename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
             const localFilePath = path.join(uploadsDir, safeFileName);
             fs.writeFileSync(localFilePath, buffer);
             publicUrl = `/uploads/${safeFileName}`;
+        } else {
+            // Serverless mode & Supabase storage unavailable/failed
+            return NextResponse.json(
+                {
+                    error: "Cloud storage (Supabase) is unavailable or not configured. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY on Vercel.",
+                    code: "STORAGE_UNAVAILABLE"
+                },
+                { status: 503 }
+            );
         }
 
         // Categorize file

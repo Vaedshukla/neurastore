@@ -1,5 +1,5 @@
 import { fileTypeFromBuffer } from 'file-type';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, supabaseAdmin } from '@/lib/supabaseClient';
 import fs from 'fs';
 import path from 'path';
 
@@ -18,6 +18,35 @@ export interface UploadResult {
     message: string;
     metadata?: FileMetadata;
     error?: string;
+}
+
+/**
+ * Detect if running in Vercel or Serverless environment
+ */
+export function isServerlessEnvironment(): boolean {
+    return Boolean(
+        process.env.VERCEL ||
+        process.env.VERCEL_ENV ||
+        process.env.AWS_LAMBDA_FUNCTION_NAME ||
+        process.env.NETLIFY ||
+        process.env.NEXT_RUNTIME === 'edge'
+    );
+}
+
+/**
+ * Check if Supabase environment variables are properly configured
+ */
+export function isSupabaseConfigured(): boolean {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    return Boolean(
+        url &&
+        key &&
+        !url.includes('placeholder') &&
+        !url.includes('your-supabase') &&
+        !key.includes('placeholder') &&
+        !key.includes('your-supabase')
+    );
 }
 
 /**
@@ -89,10 +118,7 @@ export async function getIntelligentFolderPath(
     const basePath = 'media/';
 
     if (mimeType.startsWith('image/')) {
-        // Intelligent image categorization
         let category = 'images';
-
-        // Check filename patterns for better categorization
         const name = fileName.toLowerCase();
         if (name.includes('photo') || name.includes('pic') || name.includes('picture')) {
             category = 'images/photos';
@@ -113,13 +139,10 @@ export async function getIntelligentFolderPath(
         } else if (tags.includes('diagram')) {
             category = 'images/diagrams';
         }
-
         return `${basePath}${category}/`;
 
     } else if (mimeType.startsWith('video/')) {
-        // Intelligent video categorization
         let category = 'videos';
-
         const name = fileName.toLowerCase();
         if (name.includes('tutorial') || name.includes('guide') || name.includes('howto')) {
             category = 'videos/tutorials';
@@ -130,13 +153,10 @@ export async function getIntelligentFolderPath(
         } else if (name.includes('music') || name.includes('song') || name.includes('audio')) {
             category = 'videos/music';
         }
-
         return `${basePath}${category}/`;
 
     } else if (mimeType.startsWith('audio/')) {
-        // Intelligent audio categorization
         let category = 'audio';
-
         const name = fileName.toLowerCase();
         if (name.includes('music') || name.includes('song')) {
             category = 'audio/music';
@@ -147,13 +167,10 @@ export async function getIntelligentFolderPath(
         } else if (name.includes('sound') || name.includes('effect')) {
             category = 'audio/sounds';
         }
-
         return `${basePath}${category}/`;
 
     } else if (mimeType === 'application/pdf' || mimeType.includes('document')) {
-        // Document categorization
         let category = 'documents';
-
         const name = fileName.toLowerCase();
         if (name.includes('resume') || name.includes('cv')) {
             category = 'documents/resumes';
@@ -164,13 +181,10 @@ export async function getIntelligentFolderPath(
         } else if (name.includes('invoice') || name.includes('bill')) {
             category = 'documents/invoices';
         }
-
         return `${basePath}${category}/`;
 
     } else if (mimeType === 'application/json') {
-        // JSON data categorization
         let category = 'data/json';
-
         if (tags.includes('users') || tags.includes('contacts')) {
             category = 'data/json/users';
         } else if (tags.includes('settings') || tags.includes('config')) {
@@ -178,13 +192,10 @@ export async function getIntelligentFolderPath(
         } else if (tags.includes('array') && tags.includes('records')) {
             category = 'data/json/records';
         }
-
         return `${basePath}${category}/`;
 
     } else if (mimeType === 'text/plain' || mimeType === 'text/markdown') {
-        // Text file categorization
         let category = 'documents/text';
-
         const name = fileName.toLowerCase();
         if (name.includes('readme') || name.includes('doc')) {
             category = 'documents/text/docs';
@@ -193,27 +204,20 @@ export async function getIntelligentFolderPath(
         } else if (name.includes('script') || name.includes('code')) {
             category = 'documents/text/scripts';
         }
-
         return `${basePath}${category}/`;
 
     } else if (mimeType.includes('javascript') || mimeType.includes('typescript')) {
         return `${basePath}code/javascript/`;
-
     } else if (mimeType.includes('python')) {
         return `${basePath}code/python/`;
-
     } else if (mimeType.includes('java')) {
         return `${basePath}code/java/`;
-
     } else if (mimeType.includes('html')) {
         return `${basePath}web/html/`;
-
     } else if (mimeType.includes('css')) {
         return `${basePath}web/css/`;
-
     } else if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('7z')) {
         return `${basePath}archives/`;
-
     } else {
         return `${basePath}other/`;
     }
@@ -223,16 +227,16 @@ export async function getIntelligentFolderPath(
  * Legacy function for backward compatibility
  */
 export function getFolderPath(mimeType: string): string {
-    // Default fallback - use intelligent path with empty tags
-    return 'media/others/'; // This will be replaced by the intelligent version
+    return 'media/others/';
 }
 
 /**
- * Normalize filename and generate unique path
+ * Normalize filename and generate unique path safely
  */
 export function generateFilePath(originalName: string, folderPath: string): string {
     const timestamp = Date.now();
-    const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const basename = path.basename(originalName).replace(/[\r\n\0]/g, '');
+    const sanitizedName = basename.replace(/[^a-zA-Z0-9.-]/g, '_').replace(/\.+/g, '.').slice(-100);
     return `${folderPath}${timestamp}_${sanitizedName}`;
 }
 
@@ -244,12 +248,12 @@ export async function uploadToSupabase(
     filePath: string,
     mimeType: string
 ): Promise<{ publicUrl: string } | null> {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const isPlaceholder = !supabaseUrl || supabaseUrl.includes('your-supabase') || supabaseUrl.includes('placeholder');
+    const isConfigured = isSupabaseConfigured();
+    const client = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY) ? supabaseAdmin : supabase;
 
-    if (!isPlaceholder) {
+    if (isConfigured) {
         try {
-            const { data, error } = await supabase.storage
+            let { data, error } = await client.storage
                 .from('media')
                 .upload(filePath, fileBuffer, {
                     contentType: mimeType,
@@ -257,21 +261,45 @@ export async function uploadToSupabase(
                     upsert: true,
                 });
 
+            // If bucket not found, attempt creating 'media' bucket with public access
+            if (error && (error.message?.toLowerCase().includes('bucket not found') || (error as any).statusCode === '404' || (error as any).status === 404)) {
+                try {
+                    await client.storage.createBucket('media', { public: true });
+                    const retry = await client.storage
+                        .from('media')
+                        .upload(filePath, fileBuffer, {
+                            contentType: mimeType,
+                            cacheControl: '3600',
+                            upsert: true,
+                        });
+                    data = retry.data;
+                    error = retry.error;
+                } catch (bErr) {
+                    console.warn('Attempt to auto-create media bucket failed:', bErr);
+                }
+            }
+
             if (!error && data) {
-                const { data: urlData } = supabase.storage
+                const { data: urlData } = client.storage
                     .from('media')
                     .getPublicUrl(filePath);
 
                 return { publicUrl: urlData.publicUrl };
             } else if (error) {
-                console.warn('Supabase storage upload returned error, switching to local fallback:', error.message);
+                console.warn('Supabase storage upload error:', error.message);
             }
-        } catch (error) {
-            console.warn('Supabase remote upload fetch failed, switching to local fallback:', error);
+        } catch (error: any) {
+            console.warn('Supabase remote upload failed:', error.message || error);
         }
     }
 
-    // Fallback: Store file locally under ./public/uploads
+    // In Serverless / Vercel environments, NEVER write to local filesystem
+    if (isServerlessEnvironment()) {
+        console.warn('Serverless environment: Local disk fallback skipped.');
+        return null;
+    }
+
+    // Fallback for Local Development ONLY: Store file locally under ./public/uploads
     try {
         const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
         if (!fs.existsSync(uploadsDir)) {
@@ -291,12 +319,12 @@ export async function uploadToSupabase(
  * Save metadata to files_metadata table with local fallback
  */
 export async function saveFileMetadata(metadata: FileMetadata): Promise<boolean> {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const isPlaceholder = !supabaseUrl || supabaseUrl.includes('your-supabase') || supabaseUrl.includes('placeholder');
+    const isConfigured = isSupabaseConfigured();
+    const client = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY) ? supabaseAdmin : supabase;
 
-    if (!isPlaceholder) {
+    if (isConfigured) {
         try {
-            const { error } = await supabase.from('files_metadata').insert([
+            const { error } = await client.from('files_metadata').insert([
                 {
                     name: metadata.name,
                     mime_type: metadata.mime_type,
@@ -310,13 +338,19 @@ export async function saveFileMetadata(metadata: FileMetadata): Promise<boolean>
             ]);
 
             if (!error) return true;
-            console.warn('Supabase DB metadata save failed, utilizing local fallback:', error.message);
-        } catch (error) {
-            console.warn('Save metadata to Supabase failed, using local fallback:', error);
+            console.warn('Supabase DB metadata save failed:', error.message);
+        } catch (error: any) {
+            console.warn('Save metadata to Supabase failed:', error.message || error);
         }
     }
 
-    // Local metadata JSON fallback
+    // In Serverless / Vercel environments, NEVER write to local metadata.json
+    if (isServerlessEnvironment()) {
+        console.warn('Serverless environment: Local metadata disk save skipped.');
+        return false;
+    }
+
+    // Local Development Metadata JSON fallback
     try {
         const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
         if (!fs.existsSync(uploadsDir)) {

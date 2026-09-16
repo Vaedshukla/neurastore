@@ -1,5 +1,27 @@
 [
   {
+    "id": "1789571586921",
+    "name": "upload_test_doc.txt",
+    "mime_type": "text/plain",
+    "size": 74,
+    "uploaded_at": "2026-09-16T15:13:06.921Z",
+    "folder_path": "media/documents/text/",
+    "public_url": "/uploads/1789571586919_upload_test_doc.txt",
+    "category": "Text",
+    "confidence": 1
+  },
+  {
+    "id": "1789563508368",
+    "name": "upload_test_doc.txt",
+    "mime_type": "text/plain",
+    "size": 74,
+    "uploaded_at": "2026-09-16T12:58:28.368Z",
+    "folder_path": "media/documents/text/",
+    "public_url": "/uploads/1789563508367_upload_test_doc.txt",
+    "category": "Text",
+    "confidence": 1
+  },
+  {
     "id": "1789560740575",
     "name": "upload_test_doc.txt",
     "mime_type": "text/plain",

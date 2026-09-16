@@ -249,7 +249,7 @@ function NotebookContent() {
                         Document Intelligence Workspace
                     </h1>
                     <p className="text-sm text-gray-400">
-                        NeuraStore doesn't just store your files — it understands them.
+                        NeuraStore doesn&apos;t just store your files — it understands them.
                     </p>
                 </div>
 
@@ -480,7 +480,7 @@ function NotebookContent() {
                                     <MessageSquare className="w-4 h-4 text-cyan-400" /> Ask Neura
                                 </CardTitle>
                                 <CardDescription className="text-xs text-gray-400">
-                                    Answers are grounded strictly in this document's text context.
+                                    Answers are grounded strictly in this document&apos;s text context.
                                 </CardDescription>
                             </CardHeader>
 
