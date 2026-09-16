@@ -41,30 +41,42 @@ export default function DashboardCharts({ files, onAnalyzeJSON }: { files: any[]
     const [queryModalOpen, setQueryModalOpen] = useState(false);
     const [selectedTable, setSelectedTable] = useState<{ name: string; fileName: string } | null>(null);
 
-    // Check JSON validity for .json files
+    // Check JSON validity for .json files in parallel without blocking UI
     useEffect(() => {
-        const checkJsonValidity = async () => {
-            const validFiles = new Set<string>();
+        if (!files || files.length === 0) return;
+        let isSubscribed = true;
 
-            for (const file of files) {
-                if (file.name.endsWith('.json')) {
+        const checkJsonValidity = async () => {
+            const jsonFiles = files.filter(f => f.name?.endsWith('.json') && f.public_url);
+            if (jsonFiles.length === 0) return;
+
+            const results = await Promise.allSettled(
+                jsonFiles.map(async file => {
                     try {
                         const response = await fetch(file.public_url);
+                        if (!response.ok) return null;
                         const text = await response.text();
-                        JSON.parse(text); // Try to parse
-                        validFiles.add(file.name);
-                    } catch (error) {
-                        // Invalid JSON, don't add to valid set
+                        JSON.parse(text);
+                        return file.name;
+                    } catch {
+                        return null;
                     }
-                }
-            }
+                })
+            );
 
-            setValidJsonFiles(validFiles);
+            if (isSubscribed) {
+                const validSet = new Set<string>();
+                results.forEach(res => {
+                    if (res.status === 'fulfilled' && res.value) {
+                        validSet.add(res.value);
+                    }
+                });
+                setValidJsonFiles(validSet);
+            }
         };
 
-        if (files.length > 0) {
-            checkJsonValidity();
-        }
+        checkJsonValidity();
+        return () => { isSubscribed = false; };
     }, [files]);
 
     if (!files || files.length === 0) return <p className="text-gray-400 text-center py-8">No personal files or data added yet. Upload files or write JSON data to view visualizations.</p>;

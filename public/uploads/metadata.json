@@ -1,5 +1,16 @@
 [
   {
+    "id": "1789555021635",
+    "name": "upload_test_doc.txt",
+    "mime_type": "text/plain",
+    "size": 74,
+    "uploaded_at": "2026-09-16T10:37:01.635Z",
+    "folder_path": "media/documents/text/",
+    "public_url": "/uploads/1789555021633_upload_test_doc.txt",
+    "category": "Text",
+    "confidence": 1
+  },
+  {
     "id": "doc-sample-1",
     "name": "sample_research_doc.txt",
     "mime_type": "text/plain",
