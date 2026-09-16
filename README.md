@@ -4,6 +4,7 @@ NeuraStore+ is an advanced file analysis and storage platform that intelligently
 
 ## Key Features
 
+- **NeuraNotebook Workspace**: AI-powered document intelligence workspace for PDF, TXT, MD, and DOCX files with summaries, key takeaways, topic breakdowns, and grounded Q&A with source citations
 - **Unified File Upload**: Single interface for all file types (images, videos, audio, documents, code, archives)
 - **Intelligent Organization**: Automatic categorization and directory structure based on content analysis
 - **Local Processing**: No external API dependencies - all classification done client-side
@@ -284,6 +285,32 @@ Upload `employees.json`:
 **Result**: Creates tables:
 - `data_employees` (main table with employee data)
 - `data_employees_address` (normalized address data)
+
+## NeuraNotebook
+
+NeuraNotebook transforms uploaded documents into interactive AI-powered workspaces. Users can generate summaries, extract key takeaways, view topic breakdowns and document statistics, and ask contextual questions about their documents.
+
+### Architecture
+
+```
+Document (PDF / TXT / MD / DOCX)
+  ↓
+Text Extraction & Normalization
+  ↓
+Document Context & Stats
+  ↓
+Summary / Chunking Engine
+  ↓
+LLM Grounded Q&A
+  ↓
+Grounded Answer & Citations
+```
+
+### Features:
+- **Multi-Format Extraction**: Parses PDF, TXT, MD, and DOCX files.
+- **Structured Summaries**: Generates executive summary, bullet points, topic breakdown, and entity tags.
+- **Grounded Q&A**: Answers questions using only document context and cites source chunks (`[Chunk 1]`, `[Chunk 3]`).
+- **No Hallucination**: Responds explicitly with *"I couldn't find the answer in this document."* when information is absent.
 
 ## API Endpoints Documentation
 

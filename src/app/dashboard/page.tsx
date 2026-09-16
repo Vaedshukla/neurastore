@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import DashboardCharts from "@/components/DashboardCharts";
@@ -7,7 +7,7 @@ import JSONVisualizer from "@/components/JSONVisualizer";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
 
-export default function DashboardPage() {
+function DashboardContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const [files, setFiles] = useState<any[]>([]);
@@ -198,5 +198,13 @@ export default function DashboardPage() {
 
             {showJSON && selectedFile && <JSONVisualizer data={jsonData} fileName={selectedFile.name} fileId={selectedFile.id.toString()} onClose={() => setShowJSON(false)} />}
         </div>
+    );
+}
+
+export default function DashboardPage() {
+    return (
+        <Suspense fallback={<div className="p-6 text-white">Loading dashboard...</div>}>
+            <DashboardContent />
+        </Suspense>
     );
 }

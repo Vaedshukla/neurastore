@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Image, Video, Music, File, Download, Eye, EyeOff, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { FileText, Image, Video, Music, File, Download, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
 
 interface FilePreviewProps {
+    fileId?: string;
     fileUrl: string;
     fileName: string;
     mimeType: string;
@@ -37,6 +39,7 @@ const getFileIcon = (mimeType: string) => {
 };
 
 export default function FilePreview({
+    fileId,
     fileUrl,
     fileName,
     mimeType,
@@ -249,7 +252,20 @@ export default function FilePreview({
                             {fileName}
                         </h3>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 items-center">
+                        {(mimeType.startsWith('text/') || mimeType === 'application/pdf' || fileName.endsWith('.md') || fileName.endsWith('.doc') || fileName.endsWith('.docx')) && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-cyan-500/50 text-cyan-400 hover:bg-cyan-950 text-xs flex items-center gap-1"
+                                asChild
+                            >
+                                <Link href={`/notebook?fileId=${fileId || fileName}`}>
+                                    <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+                                    Ask Neura
+                                </Link>
+                            </Button>
+                        )}
                         <Button
                             variant={previewMode === 'preview' ? 'default' : 'outline'}
                             size="sm"
