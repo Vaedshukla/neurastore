@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
+import fs from 'fs';
+import path from 'path';
 
 export async function GET(request: NextRequest) {
     try {
@@ -15,32 +17,59 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Search files_metadata with ILIKE for case-insensitive search
-        const searchTerm = `%${query.trim()}%`;
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const isPlaceholder = !supabaseUrl || supabaseUrl.includes('your-supabase') || supabaseUrl.includes('placeholder');
 
-        const { data: files, error: searchError, count } = await supabase
-            .from('files_metadata')
-            .select('*', { count: 'exact' })
-            .or(`name.ilike.${searchTerm},category.ilike.${searchTerm}`)
-            .order('created_at', { ascending: false })
-            .range(offset, offset + limit - 1);
+        let searchResults: any[] = [];
+        let totalCount = 0;
 
-        if (searchError) {
-            console.error('Search error:', searchError);
-            return NextResponse.json(
-                { error: 'Search failed', details: searchError.message },
-                { status: 500 }
-            );
+        if (!isPlaceholder) {
+            try {
+                const searchTerm = `%${query.trim()}%`;
+                const { data: files, error: searchError, count } = await supabase
+                    .from('files_metadata')
+                    .select('*', { count: 'exact' })
+                    .or(`name.ilike.${searchTerm},category.ilike.${searchTerm}`)
+                    .order('created_at', { ascending: false })
+                    .range(offset, offset + limit - 1);
+
+                if (!searchError && files) {
+                    searchResults = files;
+                    totalCount = count || files.length;
+                }
+            } catch (err) {
+                console.warn('Supabase search failed, checking local metadata:', err);
+            }
+        }
+
+        // Local metadata search fallback
+        if (searchResults.length === 0) {
+            try {
+                const metaPath = path.join(process.cwd(), 'public', 'uploads', 'metadata.json');
+                if (fs.existsSync(metaPath)) {
+                    const localRecords: any[] = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                    const qLower = query.trim().toLowerCase();
+                    const filtered = localRecords.filter((r: any) =>
+                        (r.name && r.name.toLowerCase().includes(qLower)) ||
+                        (r.category && r.category.toLowerCase().includes(qLower)) ||
+                        (r.mime_type && r.mime_type.toLowerCase().includes(qLower))
+                    );
+                    totalCount = filtered.length;
+                    searchResults = filtered.slice(offset, offset + limit);
+                }
+            } catch (localErr) {
+                console.error('Local search error:', localErr);
+            }
         }
 
         return NextResponse.json({
             success: true,
             query: query.trim(),
-            results: files || [],
-            total: count || 0,
+            results: searchResults,
+            total: totalCount,
             limit,
             offset,
-            hasMore: (count || 0) > offset + (files?.length || 0)
+            hasMore: totalCount > offset + searchResults.length
         });
 
     } catch (error: any) {

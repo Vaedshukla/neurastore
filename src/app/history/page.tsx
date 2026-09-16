@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Eye, Trash2, FileText, Image, Video, Music } from "lucide-react";
+import { Download, Eye, Trash2, FileText, Image, Video, Music, BookOpen } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/toast";
 
@@ -76,13 +76,9 @@ export default function HistoryPage() {
 
     const fetchFiles = async () => {
         try {
-            const { data, error } = await supabase
-                .from('files_metadata')
-                .select('*')
-                .order('uploaded_at', { ascending: false });
-
-            if (error) throw error;
-            setFiles(data || []);
+            const res = await fetch('/api/file-metadata');
+            const json = await res.json();
+            setFiles(json.files || []);
         } catch (error) {
             console.error('Error fetching files:', error);
         } finally {
@@ -112,21 +108,15 @@ export default function HistoryPage() {
     const handleDelete = async (file: FileMetadata) => {
         setDeletingFile(file.id);
         try {
-            // Parse path from public_url
-            // public_url: https://.../storage/v1/object/public/media/media/category/filename
-            const urlParts = file.public_url.split('/storage/v1/object/public/');
-            if (urlParts.length < 2) throw new Error('Invalid public URL');
-            const path = urlParts[1].split('/').slice(1).join('/'); // remove bucket
-
-            // Delete from storage
-            await supabase.storage.from('media').remove([path]);
-
-            // Delete metadata
-            await supabase.from('files_metadata').delete().eq('id', file.id);
+            const res = await fetch(`/api/file-metadata?fileId=${file.id}`, {
+                method: 'DELETE',
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Delete failed');
 
             setFiles(files.filter(f => f.id !== file.id));
             addToast('success', 'File Deleted', `${file.name} has been deleted successfully.`);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error deleting file:', error);
             addToast('error', 'Delete Failed', `Failed to delete ${file.name}. Please try again.`);
         } finally {
@@ -192,6 +182,14 @@ export default function HistoryPage() {
                                         >
                                             <Download className="h-4 w-4 mr-2" />
                                             Download
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => router.push(`/notebook?fileId=${file.id}`)}
+                                        >
+                                            <BookOpen className="h-4 w-4 mr-2 text-blue-400" />
+                                            Summarize
                                         </Button>
                                         {file.analysis_result && (
                                             <Button variant="outline" size="sm">

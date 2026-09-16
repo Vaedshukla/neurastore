@@ -162,7 +162,16 @@ export default function UploadPage() {
                 body: formData,
             });
 
-            const responseData = await uploadRes.json();
+            const contentType = uploadRes.headers.get('content-type') || '';
+            let responseData: any = {};
+            if (contentType.includes('application/json')) {
+                responseData = await uploadRes.json();
+            } else {
+                const rawText = await uploadRes.text();
+                console.error('Upload route non-JSON response:', rawText);
+                addToast('error', 'Configuration Required', 'Please set valid Supabase credentials in .env.local.');
+                throw new Error('Upload endpoint returned non-JSON error. Please check your Supabase configuration.');
+            }
 
             if (!uploadRes.ok) {
                 // Handle specific error codes with user-friendly messages

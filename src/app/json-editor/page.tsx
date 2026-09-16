@@ -85,7 +85,7 @@ export default function JSONEditorPage() {
                     <Textarea
                         value={jsonText}
                         onChange={(e) => handleTextChange(e.target.value)}
-                        placeholder='Enter your JSON here, e.g. [{"title": "Book", "price": 399}]'
+                        placeholder="Paste or enter your JSON data structure here..."
                         className={`min-h-[400px] font-mono text-sm ${!isValid ? "border-red-500" : ""
                             }`}
                         disabled={isProcessing}

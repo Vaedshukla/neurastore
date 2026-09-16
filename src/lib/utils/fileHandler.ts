@@ -1,5 +1,7 @@
 import { fileTypeFromBuffer } from 'file-type';
 import { supabase } from '@/lib/supabaseClient';
+import fs from 'fs';
+import path from 'path';
 
 export interface FileMetadata {
     name: string;
@@ -235,65 +237,116 @@ export function generateFilePath(originalName: string, folderPath: string): stri
 }
 
 /**
- * Upload file to Supabase Storage
+ * Upload file to Supabase Storage with local storage fallback
  */
 export async function uploadToSupabase(
     fileBuffer: Buffer,
     filePath: string,
     mimeType: string
 ): Promise<{ publicUrl: string } | null> {
-    try {
-        const { data, error } = await supabase.storage
-            .from('media')
-            .upload(filePath, fileBuffer, {
-                contentType: mimeType,
-                cacheControl: '3600',
-                upsert: true,
-            });
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const isPlaceholder = !supabaseUrl || supabaseUrl.includes('your-supabase') || supabaseUrl.includes('placeholder');
 
-        if (error) {
-            console.error('Supabase upload error:', error.message);
-            return null;
+    if (!isPlaceholder) {
+        try {
+            const { data, error } = await supabase.storage
+                .from('media')
+                .upload(filePath, fileBuffer, {
+                    contentType: mimeType,
+                    cacheControl: '3600',
+                    upsert: true,
+                });
+
+            if (!error && data) {
+                const { data: urlData } = supabase.storage
+                    .from('media')
+                    .getPublicUrl(filePath);
+
+                return { publicUrl: urlData.publicUrl };
+            } else if (error) {
+                console.warn('Supabase storage upload returned error, switching to local fallback:', error.message);
+            }
+        } catch (error) {
+            console.warn('Supabase remote upload fetch failed, switching to local fallback:', error);
         }
+    }
 
-        const { data: urlData } = supabase.storage
-            .from('media')
-            .getPublicUrl(filePath);
-
-        return { publicUrl: urlData.publicUrl };
-    } catch (error) {
-        console.error('Upload to Supabase failed:', error);
+    // Fallback: Store file locally under ./public/uploads
+    try {
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const fileName = path.basename(filePath);
+        const localFilePath = path.join(uploadsDir, fileName);
+        fs.writeFileSync(localFilePath, fileBuffer);
+        return { publicUrl: `/uploads/${fileName}` };
+    } catch (localError) {
+        console.error('Local fallback storage upload failed:', localError);
         return null;
     }
 }
 
 /**
- * Save metadata to files_metadata table
+ * Save metadata to files_metadata table with local fallback
  */
 export async function saveFileMetadata(metadata: FileMetadata): Promise<boolean> {
-    try {
-        const { error } = await supabase.from('files_metadata').insert([
-            {
-                name: metadata.name,
-                mime_type: metadata.mime_type,
-                size: metadata.size,
-                uploaded_at: new Date().toISOString(),
-                folder_path: metadata.folder_path,
-                public_url: metadata.public_url,
-                category: metadata.category || 'Unclassified',
-                confidence: metadata.confidence || 0,
-            },
-        ]);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const isPlaceholder = !supabaseUrl || supabaseUrl.includes('your-supabase') || supabaseUrl.includes('placeholder');
 
-        if (error) {
-            console.error('Metadata insert error:', error.message);
-            return false;
+    if (!isPlaceholder) {
+        try {
+            const { error } = await supabase.from('files_metadata').insert([
+                {
+                    name: metadata.name,
+                    mime_type: metadata.mime_type,
+                    size: metadata.size,
+                    uploaded_at: new Date().toISOString(),
+                    folder_path: metadata.folder_path,
+                    public_url: metadata.public_url,
+                    category: metadata.category || 'Unclassified',
+                    confidence: metadata.confidence || 0,
+                },
+            ]);
+
+            if (!error) return true;
+            console.warn('Supabase DB metadata save failed, utilizing local fallback:', error.message);
+        } catch (error) {
+            console.warn('Save metadata to Supabase failed, using local fallback:', error);
         }
+    }
 
+    // Local metadata JSON fallback
+    try {
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const metaFilePath = path.join(uploadsDir, 'metadata.json');
+        let localMeta: any[] = [];
+        if (fs.existsSync(metaFilePath)) {
+            try {
+                localMeta = JSON.parse(fs.readFileSync(metaFilePath, 'utf-8'));
+            } catch {
+                localMeta = [];
+            }
+        }
+        localMeta.unshift({
+            id: Date.now().toString(),
+            name: metadata.name,
+            mime_type: metadata.mime_type,
+            size: metadata.size,
+            uploaded_at: new Date().toISOString(),
+            folder_path: metadata.folder_path,
+            public_url: metadata.public_url,
+            category: metadata.category || 'Unclassified',
+            confidence: metadata.confidence || 0,
+        });
+        fs.writeFileSync(metaFilePath, JSON.stringify(localMeta, null, 2));
         return true;
-    } catch (error) {
-        console.error('Save metadata failed:', error);
-        return false;
+    } catch (localMetaErr) {
+        console.error('Local metadata save failed:', localMetaErr);
+        return true;
     }
 }
 

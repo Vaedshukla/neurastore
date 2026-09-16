@@ -46,18 +46,13 @@ export default function SearchPage() {
     // Fetch all files for the full tree explorer
     const fetchAllFiles = async () => {
         try {
-            // Fetch all files for both tree and click handlers
-            const { data: allFilesData, error: allErr } = await supabase
-                .from('files_metadata')
-                .select('*')
-                .order('uploaded_at', { ascending: false });
-
-            if (allErr) throw allErr;
-            const files = allFilesData || [];
+            const res = await fetch('/api/file-metadata');
+            const json = await res.json();
+            const files = json.files || [];
             setAllFiles(files);
 
             // Build tree from files
-            const fileInfos = files.map(f => ({ folder_path: f.folder_path, name: f.name })).filter(f => f.folder_path);
+            const fileInfos = files.map((f: any) => ({ folder_path: f.folder_path, name: f.name })).filter((f: any) => f.folder_path);
             let fullTree = buildFileTree(fileInfos);
             fullTree = sortTreeNodes(fullTree);
 

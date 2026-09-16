@@ -145,7 +145,7 @@ employees table:
 ### **What is Deployment? (Making Apps Available Online)**
 
 **Simple Explanation**: Deployment is like taking your app from your computer and making it available for anyone on the internet to use. Like turning your local restaurant into a chain.
-
+  
 **Common Deployment Platforms**:
 - **Vercel/Netlify**: Host frontend-only apps and APIs
 - **Railway/Render**: Full-stack apps with databases

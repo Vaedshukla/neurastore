@@ -67,7 +67,7 @@ export default function DashboardCharts({ files, onAnalyzeJSON }: { files: any[]
         }
     }, [files]);
 
-    if (!files || files.length === 0) return <p>No data to visualize.</p>;
+    if (!files || files.length === 0) return <p className="text-gray-400 text-center py-8">No personal files or data added yet. Upload files or write JSON data to view visualizations.</p>;
 
     const categories = files.reduce((acc: any, f: any) => {
         const cat = f.category || "Other";

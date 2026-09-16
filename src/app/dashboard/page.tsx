@@ -24,12 +24,9 @@ export default function DashboardPage() {
         let isMounted = true;
         async function fetchDashboardData() {
             try {
-                const { data, error } = await supabase
-                    .from("files_metadata")
-                    .select("*, table_name, storage_type, record_count")
-                    .order("uploaded_at", { ascending: false });
-                if (error) throw error;
-                if (!Array.isArray(data)) throw new Error("Invalid data format");
+                const res = await fetch("/api/file-metadata");
+                const json = await res.json();
+                const data = json.files || [];
                 if (isMounted) {
                     setFiles(data);
                     setFilteredFiles(data);
@@ -55,12 +52,9 @@ export default function DashboardPage() {
                 // Re-fetch data
                 const fetchData = async () => {
                     try {
-                        const { data, error } = await supabase
-                            .from("files_metadata")
-                            .select("*, table_name, storage_type, record_count")
-                            .order("uploaded_at", { ascending: false });
-                        if (error) throw error;
-                        if (!Array.isArray(data)) throw new Error("Invalid data format");
+                        const res = await fetch("/api/file-metadata");
+                        const json = await res.json();
+                        const data = json.files || [];
                         setFiles(data);
                         setFilteredFiles(data);
                     } catch (err: any) {
@@ -85,12 +79,9 @@ export default function DashboardPage() {
                 // Re-fetch data
                 const fetchData = async () => {
                     try {
-                        const { data, error } = await supabase
-                            .from("files_metadata")
-                            .select("*, table_name, storage_type, record_count")
-                            .order("uploaded_at", { ascending: false });
-                        if (error) throw error;
-                        if (!Array.isArray(data)) throw new Error("Invalid data format");
+                        const res = await fetch("/api/file-metadata");
+                        const json = await res.json();
+                        const data = json.files || [];
                         setFiles(data);
                         setFilteredFiles(data);
                     } catch (err: any) {
