@@ -169,8 +169,78 @@ function processDocumentText(text: string, fileName: string, fileSize: number, p
     };
 }
 
-// Answer question using grounded context
-function answerQuestionGrounded(question: string, text: string): QAResponse {
+// External LLM integration for Summary (Gemini / OpenAI REST API with local fallback)
+async function generateAISummary(text: string, fileName: string, fileSize: number, pageCount?: number): Promise<SummaryResult> {
+    const localResult = processDocumentText(text, fileName, fileSize, pageCount);
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+
+    if (!geminiKey && !openaiKey) {
+        return localResult;
+    }
+
+    try {
+        const prompt = `You are a document intelligence analyst. Analyze the following document text and return ONLY a JSON object matching this exact structure:
+{
+  "executiveSummary": "Concise 3-4 sentence overview of the document.",
+  "keyTakeaways": ["Point 1", "Point 2", "Point 3"],
+  "topics": [{"title": "Topic 1", "summary": "Short summary"}, {"title": "Topic 2", "summary": "Short summary"}],
+  "entities": ["Entity1", "Entity2"]
+}
+
+Document Text:
+${text.slice(0, 6000)}`;
+
+        let aiText = "";
+
+        if (geminiKey) {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+            const data = await res.json();
+            aiText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        } else if (openaiKey) {
+            const res = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${openaiKey}`
+                },
+                body: JSON.stringify({
+                    model: "gpt-3.5-turbo",
+                    messages: [{ role: "user", content: prompt }]
+                })
+            });
+            const data = await res.json();
+            aiText = data?.choices?.[0]?.message?.content || "";
+        }
+
+        if (aiText) {
+            const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                return {
+                    ...localResult,
+                    executiveSummary: parsed.executiveSummary || localResult.executiveSummary,
+                    keyTakeaways: parsed.keyTakeaways || localResult.keyTakeaways,
+                    topics: parsed.topics || localResult.topics,
+                    entities: parsed.entities || localResult.entities
+                };
+            }
+        }
+    } catch (err) {
+        console.warn("LLM API summarization call failed, using local NLP result:", err);
+    }
+
+    return localResult;
+}
+
+// Answer question using grounded context (LLM API with local NLP fallback)
+async function answerQuestionGrounded(question: string, text: string): Promise<QAResponse> {
     const normalized = normalizeText(text);
     const chunks = chunkText(normalized);
 
@@ -181,10 +251,10 @@ function answerQuestionGrounded(question: string, text: string): QAResponse {
         };
     }
 
-    const topScored = findRelevantChunks(chunks, question, 3);
+    const topScored = findRelevantChunks(chunks, question, 4);
     const maxScore = topScored.length > 0 ? topScored[0].score : 0;
 
-    // Check grounding threshold
+    // Check grounding threshold for out-of-scope questions
     if (maxScore === 0) {
         return {
             answer: "I couldn't find the answer in this document.",
@@ -198,7 +268,60 @@ function answerQuestionGrounded(question: string, text: string): QAResponse {
         snippet: item.chunk.text.slice(0, 150) + (item.chunk.text.length > 150 ? "..." : "")
     }));
 
-    // Synthesize grounded answer from top relevant sentences within selected chunks
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+
+    if (geminiKey || openaiKey) {
+        try {
+            const contextText = relevantChunks.map(rc => `[Chunk ${rc.chunk.chunkIndex}]: ${rc.chunk.text}`).join("\n\n");
+            const systemPrompt = `You are answering questions about a specific uploaded document. Use ONLY the provided document context below. If the answer cannot be determined from the document context, explicitly say: 'I couldn't find the answer in this document.' Do not invent facts.
+
+Document Context:
+${contextText}
+
+Question:
+${question}`;
+
+            let aiAnswer = "";
+
+            if (geminiKey) {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: systemPrompt }] }]
+                    })
+                });
+                const data = await res.json();
+                aiAnswer = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            } else if (openaiKey) {
+                const res = await fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${openaiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-3.5-turbo",
+                        messages: [{ role: "system", content: "Use only document context." }, { role: "user", content: systemPrompt }]
+                    })
+                });
+                const data = await res.json();
+                aiAnswer = data?.choices?.[0]?.message?.content || "";
+            }
+
+            if (aiAnswer && aiAnswer.trim().length > 0) {
+                return {
+                    answer: aiAnswer.trim(),
+                    sources
+                };
+            }
+        } catch (err) {
+            console.warn("LLM API Q&A call failed, using local NLP ranking:", err);
+        }
+    }
+
+    // Local NLP Grounded Q&A Fallback
     const qWords = question.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 2);
     const contextTextCombined = relevantChunks.map(rc => rc.chunk.text).join(" ");
     const sentences = contextTextCombined.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10);
@@ -232,7 +355,6 @@ async function extractTextFromBuffer(buffer: Buffer, fileName: string, mimeType:
             return { text: pdfData.text || "", pageCount: pdfData.numpages };
         } catch (pdfErr) {
             console.warn("PDF parsing fallback:", pdfErr);
-            // Fallback plain text extraction for PDF text streams
             const raw = buffer.toString("binary");
             const matches = raw.match(/\(([^()]+)\)/g) || [];
             const text = matches.map(m => m.slice(1, -1)).filter(s => s.length > 3).join(" ");
@@ -263,7 +385,6 @@ export async function POST(req: NextRequest) {
         let fileName = "Document";
         let fileSize = 0;
         let pageCount: number | undefined = undefined;
-
         let requestFileId: string | undefined = undefined;
 
         if (contentType.includes("multipart/form-data")) {
@@ -308,7 +429,7 @@ export async function POST(req: NextRequest) {
                     });
                 }
 
-                const qaResult = answerQuestionGrounded(question, textToUse);
+                const qaResult = await answerQuestionGrounded(question, textToUse);
                 return NextResponse.json(qaResult);
             }
 
@@ -334,7 +455,7 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
-        const summaryResult = processDocumentText(normalized, fileName, fileSize, pageCount);
+        const summaryResult = await generateAISummary(normalized, fileName, fileSize, pageCount);
         if (requestFileId) summaryResult.fileId = requestFileId;
 
         return NextResponse.json({
@@ -385,20 +506,33 @@ async function fetchFileTextById(fileId: string): Promise<{ text: string; fileNa
     const mimeType = fileData.mime_type || "";
     let buffer: Buffer | null = null;
 
-    if (fileData.public_url) {
-        if (fileData.public_url.startsWith("/uploads/")) {
-            const localPath = path.join(process.cwd(), "public", fileData.public_url);
+    const targetUrl = fileData.public_url || fileData.url || fileData.publicUrl || "";
+
+    if (targetUrl) {
+        if (targetUrl.startsWith("/uploads/")) {
+            const localPath = path.join(process.cwd(), "public", targetUrl);
             if (fs.existsSync(localPath)) {
                 buffer = fs.readFileSync(localPath);
             }
-        } else {
+        } else if (targetUrl.startsWith("http")) {
             try {
-                const res = await fetch(fileData.public_url);
+                const res = await fetch(targetUrl);
                 if (res.ok) {
                     buffer = Buffer.from(await res.arrayBuffer());
                 }
             } catch (fetchErr) {
                 console.warn("Remote file fetch failed:", fetchErr);
+            }
+        }
+    }
+
+    // Fallback search in public/uploads for local disk files
+    if (!buffer) {
+        const uploadsDir = path.join(process.cwd(), "public", "uploads");
+        if (fs.existsSync(uploadsDir)) {
+            const matches = fs.readdirSync(uploadsDir).filter(f => f.includes(fileName) || (fileId && f.includes(fileId)));
+            if (matches.length > 0) {
+                buffer = fs.readFileSync(path.join(uploadsDir, matches[0]));
             }
         }
     }
