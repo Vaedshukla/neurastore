@@ -1,0 +1,13 @@
+NeuraStore+ Intelligent Storage Architecture Paper
+
+Abstract:
+NeuraStore+ is a hybrid file analysis and storage system designed to solve the unstructured data management problem in cloud environments. Traditional storage platforms like Dropbox or S3 treat uploaded data as static byte blobs. NeuraStore+ introduces client-side MIME inspection, real-time JSON-to-SQL schema inference, and an interactive document workspace named NeuraNotebook.
+
+Section 1: Automated JSON Schema Inference and Normalization
+When a user uploads a JSON dataset, NeuraStore+ inspects field consistency, depth, and data types. For structured tabular datasets with nesting depth under 3, NeuraStore+ automatically generates PostgreSQL DDL statements to create database tables with foreign key constraints.
+
+Section 2: NeuraNotebook RAG Architecture
+NeuraNotebook processes PDF, DOCX, TXT, and Markdown documents into indexed chunks of 700 characters. When users ask questions, NeuraNotebook performs lexical TF-IDF relevance scoring to retrieve top context chunks. Answers are generated strictly from the document context with source chunk citations.
+
+Conclusion:
+NeuraStore+ bridges the gap between static object storage and relational database querying, enabling zero-ETL analytics for modern applications.
