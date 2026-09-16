@@ -52,6 +52,15 @@ async function runLiveTest() {
     console.log("\n[Live Test 3] Grounded Q&A (Out-of-Scope Question):");
     console.log("Answer:", res3.data.answer);
     console.log("Sources:", res3.data.sources);
+
+    // Test 4: High-Level Overview / Main Argument Question
+    const res4 = await makePostRequest(JSON.stringify({
+        fileId: "doc-sample-1",
+        question: "What is the main argument of this paper?"
+    }));
+    console.log("\n[Live Test 4] High-Level Q&A (Main Argument Question):");
+    console.log("Answer:\n", res4.data.answer);
+    console.log("Sources:", res4.data.sources);
 }
 
 runLiveTest().catch(console.error);

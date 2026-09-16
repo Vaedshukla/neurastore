@@ -70,6 +70,18 @@ function chunkText(text: string, chunkSize: number = 700): DocumentChunk[] {
     return chunks;
 }
 
+// Check if question is asking for high-level overview, main argument, or summary
+function isOverviewOrMainArgumentQuestion(question: string): boolean {
+    const qLower = question.toLowerCase();
+    const overviewKeywords = [
+        "main argument", "main point", "main idea", "main objective", "main purpose",
+        "main topic", "main takeaway", "primary argument", "central argument",
+        "overview", "summary", "summarize", "about", "what is this", "what does this",
+        "key points", "key findings", "conclusion", "abstract", "purpose", "thesis"
+    ];
+    return overviewKeywords.some(kw => qLower.includes(kw));
+}
+
 // Rank chunks by keyword relevance / TF-IDF lexical overlap
 function findRelevantChunks(chunks: DocumentChunk[], question: string, topK: number = 4): { chunk: DocumentChunk; score: number }[] {
     const stopWords = new Set(["the", "and", "is", "in", "to", "of", "for", "with", "on", "at", "from", "by", "an", "be", "this", "that", "are", "was", "as", "it", "or", "what", "where", "how", "why", "who", "which", "does", "can", "tell", "me", "about"]);
@@ -239,7 +251,7 @@ ${text.slice(0, 6000)}`;
     return localResult;
 }
 
-// Answer question using grounded context (LLM API with local NLP fallback)
+// Answer question using grounded context (LLM API + Smart Overview logic with local NLP fallback)
 async function answerQuestionGrounded(question: string, text: string): Promise<QAResponse> {
     const normalized = normalizeText(text);
     const chunks = chunkText(normalized);
@@ -251,30 +263,53 @@ async function answerQuestionGrounded(question: string, text: string): Promise<Q
         };
     }
 
-    const topScored = findRelevantChunks(chunks, question, 4);
-    const maxScore = topScored.length > 0 ? topScored[0].score : 0;
+    const isOverviewQ = isOverviewOrMainArgumentQuestion(question);
 
-    // Check grounding threshold for out-of-scope questions
-    if (maxScore === 0) {
-        return {
-            answer: "I couldn't find the answer in this document.",
-            sources: []
-        };
+    let selectedChunks: DocumentChunk[] = [];
+    if (isOverviewQ) {
+        // For main argument / overview questions, select first 3 introductory/abstract chunks
+        selectedChunks = chunks.slice(0, Math.min(3, chunks.length));
+    } else {
+        const topScored = findRelevantChunks(chunks, question, 4);
+        const maxScore = topScored.length > 0 ? topScored[0].score : 0;
+
+        // Check grounding threshold for out-of-scope questions (e.g., weather in Paris)
+        if (maxScore === 0) {
+            // Check if question looks like a general document inquiry
+            if (question.toLowerCase().includes("doc") || question.toLowerCase().includes("pdf") || question.toLowerCase().includes("paper")) {
+                selectedChunks = chunks.slice(0, 2);
+            } else {
+                return {
+                    answer: "I couldn't find the answer in this document.",
+                    sources: []
+                };
+            }
+        } else {
+            selectedChunks = topScored.filter(s => s.score > 0).map(s => s.chunk);
+        }
     }
 
-    const relevantChunks = topScored.filter(s => s.score > 0);
-    const sources: SourceCitation[] = relevantChunks.map(item => ({
-        chunkIndex: item.chunk.chunkIndex,
-        snippet: item.chunk.text.slice(0, 150) + (item.chunk.text.length > 150 ? "..." : "")
+    const sources: SourceCitation[] = selectedChunks.map(chunk => ({
+        chunkIndex: chunk.chunkIndex,
+        snippet: chunk.text.slice(0, 150) + (chunk.text.length > 150 ? "..." : "")
     }));
 
     const geminiKey = process.env.GEMINI_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
 
+    // LLM synthesis mode (when GEMINI_API_KEY or OPENAI_API_KEY is available)
     if (geminiKey || openaiKey) {
         try {
-            const contextText = relevantChunks.map(rc => `[Chunk ${rc.chunk.chunkIndex}]: ${rc.chunk.text}`).join("\n\n");
-            const systemPrompt = `You are answering questions about a specific uploaded document. Use ONLY the provided document context below. If the answer cannot be determined from the document context, explicitly say: 'I couldn't find the answer in this document.' Do not invent facts.
+            const contextText = selectedChunks.map(rc => `[Chunk ${rc.chunkIndex}]: ${rc.text}`).join("\n\n");
+            const systemPrompt = isOverviewQ
+                ? `You are an executive document analyst. Synthesize a clear, structured response explaining the main argument, core thesis, and primary conclusions of this document based strictly on the context provided below.
+
+Document Context:
+${contextText}
+
+Question:
+${question}`
+                : `You are answering questions about a specific uploaded document. Use ONLY the provided document context below. If the answer cannot be determined from the document context, explicitly say: 'I couldn't find the answer in this document.' Do not invent facts.
 
 Document Context:
 ${contextText}
@@ -321,9 +356,21 @@ ${question}`;
         }
     }
 
-    // Local NLP Grounded Q&A Fallback
+    // Local NLP Grounded Response (Smart Overview vs Specific Sentence Match)
+    if (isOverviewQ) {
+        const summaryObj = processDocumentText(normalized, "Document", normalized.length);
+        const structuredAnswer = `The primary argument and overview of this document:\n\n${summaryObj.executiveSummary}\n\nKey Highlights:\n` +
+            summaryObj.keyTakeaways.slice(0, 3).map(t => `• ${t}`).join("\n");
+
+        return {
+            answer: structuredAnswer,
+            sources
+        };
+    }
+
+    // Specific Sentence Match
     const qWords = question.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 2);
-    const contextTextCombined = relevantChunks.map(rc => rc.chunk.text).join(" ");
+    const contextTextCombined = selectedChunks.map(rc => rc.text).join(" ");
     const sentences = contextTextCombined.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10);
 
     const matchingSentences = sentences.filter(s => {
@@ -335,7 +382,7 @@ ${question}`;
     if (matchingSentences.length > 0) {
         answer = matchingSentences.slice(0, 3).join(" ");
     } else {
-        answer = relevantChunks[0].chunk.text.slice(0, 300) + "...";
+        answer = selectedChunks[0].text.slice(0, 350) + "...";
     }
 
     return {
